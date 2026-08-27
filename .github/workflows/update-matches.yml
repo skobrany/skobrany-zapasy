@@ -1,9 +1,14 @@
 name: Aktualizace zápasů SK Obřany
 
 on:
-  schedule:
-    # Každých 6 hodin (čas je v UTC)
-    - cron: '15 */6 * * *'
+  # Naplánované spouštění je VYPNUTÉ - FAČR (www.fotbal.cz i is.fotbal.cz) blokuje
+  # GitHub Actions IP adresy na síťové úrovni, takže automatizace odsud nefunguje.
+  # Aktualizace teď běží lokálně na PC správce klubu (viz README.md).
+  # Pokud se to v budoucnu změní, odkomentuj cron a nastav zpět GitHub Secrets
+  # (WP_URL, WP_USER, WP_APP_PASSWORD, WP_PAGE_ID, IS_FOTBAL_EMAIL, IS_FOTBAL_PASSWORD).
+  #
+  # schedule:
+  #   - cron: '15 */6 * * *'
   workflow_dispatch: {}
 
 jobs:
