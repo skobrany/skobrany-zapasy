@@ -47,6 +47,34 @@ v profilu WP účtu (Uživatelé → Profil → Hesla aplikací).
 
 **Nikdy tyto proměnné/hesla nezapisuj do souborů, které se commitují do gitu.**
 
+## Přenesení na jiný (trvale běžící) počítač
+
+Nejjednodušší cesta - jednorázový skript, který nastaví úplně vše:
+
+1. Nainstaluj [Git](https://git-scm.com/downloads) (pokud tam ještě není).
+2. V PowerShellu naklonuj repozitář:
+   ```powershell
+   git clone https://github.com/skobrany/skobrany-zapasy.git
+   cd skobrany-zapasy
+   ```
+3. Spusť instalační skript:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts\setup-task.ps1
+   ```
+   Skript:
+   - nainstaluje Node.js (přes winget), pokud tam není,
+   - nainstaluje závislosti a Chromium pro Playwright,
+   - zeptá se na přihlašovací údaje (IS FAČR + WordPress) a uloží je **jen lokálně**
+     do `.credentials.ps1` (tenhle soubor se do gitu nikdy nedostane),
+   - založí naplánovanou úlohu ve Windows Plánovači úloh, která běží **2× denně (7:00 a 19:00)**.
+4. Pokud skript hlásil, že instaloval Node.js poprvé, zavři a znovu otevři PowerShell
+   a spusť skript ještě jednou (aby `node` bylo vidět v PATH).
+5. Ruční test hned po nastavení: `Start-ScheduledTask -TaskName 'SKObrany-AktualizaceZapasu'`,
+   výsledek zkontroluj v `logs\run-update.log` a na https://skobrany.cz/zapasy/.
+
+Žádnou instalaci Claude/AI asistenta na cílovém počítači není potřeba - stačí Node.js a git,
+zbytek dělá `setup-task.ps1`.
+
 ## Jak to funguje
 
 1. `scripts/scrape.mjs` – přihlásí se přes Playwright (headless Chromium) do IS FAČR,
@@ -55,16 +83,11 @@ v profilu WP účtu (Uživatelé → Profil → Hesla aplikací).
 2. `scripts/publish.mjs` – z `data/matches.json` vyrenderuje HTML (`scripts/render.mjs`)
    a přes WordPress REST API (`/wp-json/wp/v2/pages/466`) přepíše obsah stránky Zápasy.
 
-## Případná automatizace přes Windows Plánovač úloh
+## Automatizace přes Windows Plánovač úloh
 
-Až bude chuť to zautomatizovat, jde vytvořit naplánovanou úlohu, která spustí:
-
-```powershell
-node scripts/scrape.mjs; node scripts/publish.mjs
-```
-
-s výše uvedenými proměnnými prostředí nastavenými v samotné úloze (ne v repozitáři).
-Funguje to jen když je počítač zapnutý a připojený k internetu v čase spuštění.
+Viz sekce "Přenesení na jiný (trvale běžící) počítač" výše - `scripts\setup-task.ps1` založí
+naplánovanou úlohu automaticky. Funguje to jen když je počítač zapnutý a připojený k internetu
+v čase spuštění, proto se to hodí přesunout na počítač, který běží nastálo.
 
 ## Úprava vzhledu / družstev
 
