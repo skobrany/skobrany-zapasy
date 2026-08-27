@@ -132,7 +132,6 @@ async function main() {
   await browser.close();
 
   const now = new Date();
-  const weekAhead = new Date(now.getTime() + 7 * 24 * 3600 * 1000);
 
   const results = [];
   for (const team of TEAMS) {
@@ -148,9 +147,9 @@ async function main() {
 
     const played = teamMatches.filter((m) => m.score && !m.score.includes('--'));
     const lastPlayed = played.length ? played[played.length - 1] : null;
-    const upcoming = teamMatches.filter(
-      (m) => (!m.score || m.score.includes('--')) && m.date >= now && m.date <= weekAhead
-    );
+    // Všechny budoucí neodehrané zápasy (ne jen následujících 7 dní) - stránka si
+    // podle nich sama po týdnech listuje na klientovi (viz render.mjs).
+    const upcoming = teamMatches.filter((m) => (!m.score || m.score.includes('--')) && m.date >= now);
 
     results.push({
       code: team.competitionCode,
@@ -159,7 +158,7 @@ async function main() {
       upcoming: upcoming.map(formatMatch),
     });
 
-    console.log(`  ${team.name}: ${teamMatches.length} zápasů, odehráno ${played.length}, nadcházejících (7 dní) ${upcoming.length}`);
+    console.log(`  ${team.name}: ${teamMatches.length} zápasů, odehráno ${played.length}, budoucích celkem ${upcoming.length}`);
   }
 
   function home_or_away_is_team(r, teamName) {
