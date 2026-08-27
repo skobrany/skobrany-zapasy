@@ -1,0 +1,46 @@
+name: Aktualizace zápasů SK Obřany
+
+on:
+  schedule:
+    # Každých 6 hodin (čas je v UTC)
+    - cron: '15 */6 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Nastavit Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalovat závislosti
+        run: npm ci
+
+      - name: Instalovat Chromium (Playwright)
+        run: npx playwright install --with-deps chromium
+
+      - name: Stáhnout aktuální zápasy z fotbal.cz
+        run: npm run scrape
+
+      - name: Publikovat na skobrany.cz
+        env:
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          WP_PAGE_ID: ${{ secrets.WP_PAGE_ID }}
+        run: npm run publish
+
+      - name: Uložit data jako artefakt (pro ladění)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matches-data
+          path: data/matches.json
+          retention-days: 14
