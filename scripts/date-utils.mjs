@@ -30,6 +30,7 @@ export function parseCzechDateTime(text) {
 
 export function formatCzechDate(date) {
   if (!date) return '';
+  if (!(date instanceof Date)) date = new Date(date);
   const days = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
   // Zpět převod z UTC na pražský čas jen pro zobrazení (přibližně, +1/+2h dle sezóny odhadnuté z UTC měsíce)
   const month0 = date.getUTCMonth();

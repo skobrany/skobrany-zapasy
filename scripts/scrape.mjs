@@ -2,109 +2,165 @@ import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { COMPETITIONS, CLUB_TEAM_NAME } from './competitions.mjs';
+import { TEAMS } from './competitions.mjs';
 import { parseCzechDateTime } from './date-utils.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const MATCHES_URL = 'https://is.fotbal.cz/public/kluby/zapasy-klubu/?sport=fotbal';
 
-async function scrapeCompetition(page, comp) {
-  const url = `https://www.fotbal.cz/souteze/turnaje/zapas/${comp.id}`;
+async function login(page, email, password) {
+  await page.goto('https://is.fotbal.cz/?discipline=football', { waitUntil: 'domcontentloaded' });
+  await page.locator('input[type="email"]').first().fill(email);
+  await page.locator('input[type="password"]').first().fill(password);
+  await page.locator('button:has-text("Přihlásit"), button[type="submit"]').first().click();
+  await page.waitForTimeout(4000);
 
-  let lastError = null;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-      await page.waitForSelector('li.MatchRound.js-matchRound', { timeout: 20000 });
-      lastError = null;
-      break;
-    } catch (e) {
-      lastError = e;
-      if (process.env.DEBUG_SCRAPE) {
-        const dir = path.join(__dirname, '..', 'data', 'debug');
-        fs.mkdirSync(dir, { recursive: true });
-        const base = `${comp.code}-attempt${attempt}`;
-        try {
-          await page.screenshot({ path: path.join(dir, `${base}.png`), fullPage: true });
-          fs.writeFileSync(path.join(dir, `${base}.html`), await page.content(), 'utf-8');
-          fs.writeFileSync(path.join(dir, `${base}.txt`), `URL: ${page.url()}\nTitle: ${await page.title()}\n`, 'utf-8');
-        } catch (dbgErr) {
-          console.error('Debug capture failed:', dbgErr.message);
-        }
+  const stillHasPasswordField = await page.locator('input[type="password"]').count();
+  if (stillHasPasswordField > 0) {
+    throw new Error('Přihlášení do IS FAČR se nezdařilo (formulář pro heslo je stále zobrazen).');
+  }
+}
+
+function parseRow(cells) {
+  // cells: array of 9 <td> elements' data already extracted in the browser context
+  return cells;
+}
+
+async function scrapeAllMatches(page) {
+  await page.goto(MATCHES_URL, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('table[id*="gridData"]', { timeout: 20000 });
+
+  const allRows = [];
+  const seenPages = new Set();
+  let currentPage = 1;
+  let maxPage = 1;
+
+  for (let guard = 0; guard < 25; guard++) {
+    await page.waitForTimeout(600);
+    const { rows, pagerNumbers } = await page.evaluate(() => {
+      const table = document.querySelector('table[id*="gridData"]');
+      const trs = Array.from(table.querySelectorAll('tr'));
+      const rows = [];
+      for (const tr of trs) {
+        const tds = tr.querySelectorAll('td');
+        if (tds.length < 9) continue;
+        const dateDiv = tds[0];
+        const matchNumber = dateDiv.querySelector('div') ? dateDiv.querySelector('div').textContent.trim() : '';
+        const dateText = dateDiv.querySelector('strong') ? dateDiv.querySelector('strong').textContent.trim() : '';
+        const teamLinks = tds[3].querySelectorAll('a');
+        if (teamLinks.length < 2) continue;
+        const home = teamLinks[0].textContent.trim();
+        const away = teamLinks[1].textContent.trim();
+        const score = tds[4].textContent.replace(/\s+/g, ' ').trim();
+        const compLinks = tds[7].querySelectorAll('a');
+        const competitionCode = compLinks[0] ? compLinks[0].textContent.trim() : '';
+        const competitionName = compLinks[1] ? compLinks[1].textContent.trim() : '';
+        rows.push({ matchNumber, dateText, home, away, score, competitionCode, competitionName });
       }
-      await page.waitForTimeout(4000 + attempt * 2000);
-    }
-  }
-  if (lastError) {
-    throw new Error(`Nepodařilo se načíst zápasy pro "${comp.name}" (${comp.id}): ${lastError.message}`);
-  }
-
-  const rawMatches = await page.$$eval('li.MatchRound.js-matchRound', (cards) => {
-    return cards.map((card) => {
-      const main = card.querySelector('.MatchRound-mainInfoContainer');
-      const teamSpans = main ? main.querySelectorAll('span.H7') : [];
-      const home = teamSpans[0] ? teamSpans[0].textContent.trim() : '';
-      const away = teamSpans[1] ? teamSpans[1].textContent.trim() : '';
-      const scoreEl = main ? main.querySelector('strong.H4.u-c-tertiary') : null;
-      const score = scoreEl ? scoreEl.textContent.trim() : null;
-
-      let dateText = null;
-      let matchNumber = null;
-      card.querySelectorAll('ul.MatchRound-meta li').forEach((li) => {
-        const t = li.textContent.replace(/\s+/g, ' ').trim();
-        if (t.startsWith('Datum:')) dateText = t.replace('Datum:', '').trim();
-        if (t.startsWith('Číslo utkání:')) matchNumber = t.replace('Číslo utkání:', '').trim();
-      });
-
-      return { home, away, score, dateText, matchNumber };
+      const pagerNumbers = Array.from(document.querySelectorAll('a[href*="Page$"]'))
+        .map((a) => a.textContent.trim())
+        .filter((t) => /^\d+$/.test(t))
+        .map(Number);
+      return { rows, pagerNumbers };
     });
-  });
 
-  return rawMatches
-    .filter((m) => m.home === CLUB_TEAM_NAME || m.away === CLUB_TEAM_NAME)
-    .map((m) => ({ ...m, date: parseCzechDateTime(m.dateText) }))
-    .filter((m) => m.date instanceof Date && !isNaN(m.date))
-    .sort((a, b) => a.date - b.date);
+    allRows.push(...rows);
+    seenPages.add(currentPage);
+    if (pagerNumbers.length) {
+      maxPage = Math.max(maxPage, ...pagerNumbers);
+    }
+
+    const nextPage = currentPage + 1;
+    if (nextPage > maxPage || seenPages.has(nextPage)) break;
+
+    // Klikneme na skutečný odkaz stránky (ne __doPostBack přes evaluate - to naráží na
+    // strict-mode omezení Playwrightu v interakci s legacy ASP.NET WebForms skriptem).
+    await page
+      .locator(`a[href*="'Page$${nextPage}');"]`)
+      .first()
+      .click();
+    await page.waitForTimeout(1500);
+    currentPage = nextPage;
+  }
+
+  return allRows
+    .map((r) => ({ ...r, date: parseCzechDateTime(r.dateText) }))
+    .filter((r) => r.date instanceof Date && !isNaN(r.date));
+}
+
+function splitClubTeam(text) {
+  // "6220521 - Obřany A" -> { clubId: "6220521", teamName: "Obřany A" }
+  const m = text.match(/^(\d+)\s*-\s*(.+)$/);
+  if (!m) return { clubId: '', teamName: text.trim() };
+  return { clubId: m[1], teamName: m[2].trim() };
 }
 
 async function main() {
-  const browser = await chromium.launch({
-    headless: true,
-    args: ['--disable-blink-features=AutomationControlled'],
-  });
-  const context = await browser.newContext({
-    userAgent:
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-    locale: 'cs-CZ',
-    viewport: { width: 1366, height: 900 },
-  });
+  const email = process.env.IS_FOTBAL_EMAIL;
+  const password = process.env.IS_FOTBAL_PASSWORD;
+  if (!email || !password) {
+    console.error('Chybí IS_FOTBAL_EMAIL / IS_FOTBAL_PASSWORD.');
+    process.exit(1);
+  }
+
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({ locale: 'cs-CZ', viewport: { width: 1366, height: 900 } });
   const page = await context.newPage();
+
+  console.log('Přihlašuji se do IS FAČR...');
+  await login(page, email, password);
+  console.log('Přihlášení OK, stahuji rozpis zápasů...');
+
+  const rawMatches = await scrapeAllMatches(page);
+  console.log(`Staženo ${rawMatches.length} řádků z rozpisu.`);
+
+  await browser.close();
 
   const now = new Date();
   const weekAhead = new Date(now.getTime() + 7 * 24 * 3600 * 1000);
 
   const results = [];
-  const errors = [];
+  for (const team of TEAMS) {
+    const teamMatches = rawMatches
+      .filter((r) => r.competitionCode === team.competitionCode)
+      .map((r) => {
+        const home = splitClubTeam(r.home);
+        const away = splitClubTeam(r.away);
+        return { ...r, home, away };
+      })
+      .filter((r) => home_or_away_is_team(r, team.teamName))
+      .sort((a, b) => a.date - b.date);
 
-  const competitions = process.env.DEBUG_SCRAPE ? COMPETITIONS.slice(0, 1) : COMPETITIONS;
+    const played = teamMatches.filter((m) => m.score && !m.score.includes('--'));
+    const lastPlayed = played.length ? played[played.length - 1] : null;
+    const upcoming = teamMatches.filter(
+      (m) => (!m.score || m.score.includes('--')) && m.date >= now && m.date <= weekAhead
+    );
 
-  for (const comp of competitions) {
-    console.log(`Stahuji: ${comp.name}...`);
-    try {
-      const matches = await scrapeCompetition(page, comp);
-      const played = matches.filter((m) => m.score);
-      const lastPlayed = played.length ? played[played.length - 1] : null;
-      const upcoming = matches.filter((m) => !m.score && m.date >= now && m.date <= weekAhead);
-      results.push({ code: comp.code, name: comp.name, lastPlayed, upcoming });
-      console.log(`  -> odehráno celkem ${played.length}, nadcházejících (7 dní): ${upcoming.length}`);
-    } catch (e) {
-      console.error(`  CHYBA: ${e.message}`);
-      errors.push({ competition: comp.name, error: e.message });
-      results.push({ code: comp.code, name: comp.name, lastPlayed: null, upcoming: [], error: e.message });
-    }
-    await page.waitForTimeout(1200 + Math.random() * 1500);
+    results.push({
+      code: team.competitionCode,
+      name: team.name,
+      lastPlayed: lastPlayed ? formatMatch(lastPlayed) : null,
+      upcoming: upcoming.map(formatMatch),
+    });
+
+    console.log(`  ${team.name}: ${teamMatches.length} zápasů, odehráno ${played.length}, nadcházejících (7 dní) ${upcoming.length}`);
   }
 
-  await browser.close();
+  function home_or_away_is_team(r, teamName) {
+    return r.home.teamName === teamName || r.away.teamName === teamName;
+  }
+
+  function formatMatch(m) {
+    return {
+      home: m.home.teamName,
+      away: m.away.teamName,
+      score: m.score && !m.score.includes('--') ? m.score.replace(/\s*:\s*/, ':') : null,
+      dateText: m.dateText,
+      date: m.date,
+      matchNumber: m.matchNumber,
+    };
+  }
 
   const outDir = path.join(__dirname, '..', 'data');
   fs.mkdirSync(outDir, { recursive: true });
@@ -114,14 +170,7 @@ async function main() {
     'utf-8'
   );
 
-  console.log(`Hotovo. Uloženo do data/matches.json (${results.length} kategorií, ${errors.length} chyb).`);
-
-  // Pokud selhaly úplně všechny kategorie, ukonči s chybou -> GitHub Actions pošle upozornění mailem
-  // a nepřepíšeme WP stránku prázdnými/nesmyslnými daty.
-  if (errors.length === competitions.length) {
-    console.error('Všechny kategorie selhaly, přerušuji (stránka na webu zůstane nezměněná).');
-    process.exit(1);
-  }
+  console.log('Hotovo. Uloženo do data/matches.json');
 }
 
 main().catch((err) => {

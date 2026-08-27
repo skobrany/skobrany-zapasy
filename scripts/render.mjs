@@ -12,7 +12,7 @@ function renderLastPlayed(m) {
   if (!m) {
     return `<p class="sko-empty">Zatím nebyl odehrán žádný zápas.</p>`;
   }
-  const isHome = m.home === 'Obřany';
+  const isHome = m.home.startsWith('Obřany');
   return `
     <div class="sko-match sko-match--played">
       <div class="sko-match-date">${esc(formatCzechDate(m.date))}</div>
@@ -30,7 +30,7 @@ function renderUpcoming(list) {
   }
   const items = list
     .map((m) => {
-      const isHome = m.home === 'Obřany';
+      const isHome = m.home.startsWith('Obřany');
       return `
       <div class="sko-match">
         <div class="sko-match-date">${esc(formatCzechDate(m.date))}</div>
