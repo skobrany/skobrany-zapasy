@@ -4,7 +4,12 @@ on:
   schedule:
     # Každých 6 hodin (čas je v UTC)
     - cron: '15 */6 * * *'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      debug_scrape:
+        description: 'Diagnostický režim (jen 1. kategorie, uloží screenshot/HTML)'
+        type: boolean
+        default: false
 
 jobs:
   update:
@@ -26,9 +31,12 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Stáhnout aktuální zápasy z fotbal.cz
+        env:
+          DEBUG_SCRAPE: ${{ inputs.debug_scrape && '1' || '' }}
         run: npm run scrape
 
       - name: Publikovat na skobrany.cz
+        if: ${{ !inputs.debug_scrape }}
         env:
           WP_URL: ${{ secrets.WP_URL }}
           WP_USER: ${{ secrets.WP_USER }}
@@ -43,4 +51,12 @@ jobs:
           name: matches-data
           path: data/matches.json
           retention-days: 14
+
+      - name: Uložit debug výstup (screenshoty/HTML)
+        if: ${{ always() && inputs.debug_scrape }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-output
+          path: data/debug
+          retention-days: 7
 # retrigger 1787862904

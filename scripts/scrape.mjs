@@ -19,6 +19,18 @@ async function scrapeCompetition(page, comp) {
       break;
     } catch (e) {
       lastError = e;
+      if (process.env.DEBUG_SCRAPE) {
+        const dir = path.join(__dirname, '..', 'data', 'debug');
+        fs.mkdirSync(dir, { recursive: true });
+        const base = `${comp.code}-attempt${attempt}`;
+        try {
+          await page.screenshot({ path: path.join(dir, `${base}.png`), fullPage: true });
+          fs.writeFileSync(path.join(dir, `${base}.html`), await page.content(), 'utf-8');
+          fs.writeFileSync(path.join(dir, `${base}.txt`), `URL: ${page.url()}\nTitle: ${await page.title()}\n`, 'utf-8');
+        } catch (dbgErr) {
+          console.error('Debug capture failed:', dbgErr.message);
+        }
+      }
       await page.waitForTimeout(4000 + attempt * 2000);
     }
   }
@@ -73,7 +85,9 @@ async function main() {
   const results = [];
   const errors = [];
 
-  for (const comp of COMPETITIONS) {
+  const competitions = process.env.DEBUG_SCRAPE ? COMPETITIONS.slice(0, 1) : COMPETITIONS;
+
+  for (const comp of competitions) {
     console.log(`Stahuji: ${comp.name}...`);
     try {
       const matches = await scrapeCompetition(page, comp);
@@ -104,7 +118,7 @@ async function main() {
 
   // Pokud selhaly úplně všechny kategorie, ukonči s chybou -> GitHub Actions pošle upozornění mailem
   // a nepřepíšeme WP stránku prázdnými/nesmyslnými daty.
-  if (errors.length === COMPETITIONS.length) {
+  if (errors.length === competitions.length) {
     console.error('Všechny kategorie selhaly, přerušuji (stránka na webu zůstane nezměněná).');
     process.exit(1);
   }
