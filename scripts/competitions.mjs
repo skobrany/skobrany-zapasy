@@ -2,8 +2,8 @@
 // competitionCode musí odpovídat prefixu "Číslo soutěže" ve výpisu utkání (např. 2026622A1A).
 // teamName musí přesně odpovídat názvu týmu ve sloupci Domácí/Hosté (např. "Obřany A").
 export const TEAMS = [
-  { competitionCode: '2026622H1A', teamName: 'Obřany A', name: 'Mladší přípravka sk. A – Obřany A' },
-  { competitionCode: '2026622H1A', teamName: 'Obřany B', name: 'Mladší přípravka sk. A – Obřany B' },
+  { competitionCode: '2026622H1A', teamName: 'Obřany A', name: 'Mladší přípravka sk. A' },
+  { competitionCode: '2026622H1A', teamName: 'Obřany B', name: 'Mladší přípravka sk. A' },
   { competitionCode: '2026622H1C', teamName: 'Obřany C', name: 'Mladší přípravka sk. C' },
   { competitionCode: '2026622G1B', teamName: 'Obřany A', name: 'Starší přípravka sk. B' },
   { competitionCode: '2026622G1D', teamName: 'Obřany B', name: 'Starší přípravka sk. D' },
