@@ -80,7 +80,7 @@ function renderWidget(data) {
   return `
   <div class="sko-block">
     <div class="sko-upcoming-header">
-      <h2 class="sko-block-title sko-block-title--flex">Zápasy</h2>
+      <h2 class="sko-block-title sko-block-title--flex">Nejbližší zápasy</h2>
       <div class="sko-week-nav">
         <button type="button" id="sko-prev-week" aria-label="Předchozí týden">‹</button>
         <span id="sko-week-label" class="sko-week-label"></span>
