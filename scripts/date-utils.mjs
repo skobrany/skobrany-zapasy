@@ -28,19 +28,36 @@ export function parseCzechDateTime(text) {
   return new Date(Date.UTC(y, mo - 1, d, h - offset, mi));
 }
 
-export function formatCzechDate(date) {
-  if (!date) return '';
+function toPragueLocal(date) {
   if (!(date instanceof Date)) date = new Date(date);
-  const days = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
   // Zpět převod z UTC na pražský čas jen pro zobrazení (přibližně, +1/+2h dle sezóny odhadnuté z UTC měsíce)
   const month0 = date.getUTCMonth();
   const isSummer = month0 >= 2 && month0 <= 9; // hrubý odhad duben-říjen jako CEST, dostatečné pro zobrazení
   const offset = isSummer ? 2 : 1;
-  const local = new Date(date.getTime() + offset * 3600 * 1000);
+  return new Date(date.getTime() + offset * 3600 * 1000);
+}
+
+export function formatCzechDate(date) {
+  if (!date) return '';
+  const days = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
+  const local = toPragueLocal(date);
   const dayName = days[local.getUTCDay()];
   const dd = String(local.getUTCDate()).padStart(2, '0');
   const mm = String(local.getUTCMonth() + 1).padStart(2, '0');
   const hh = String(local.getUTCHours()).padStart(2, '0');
   const min = String(local.getUTCMinutes()).padStart(2, '0');
   return `${dayName} ${dd}. ${mm}. ${local.getUTCFullYear()} ${hh}:${min}`;
+}
+
+// Kratší formát bez roku, pro řádkové zobrazení: "So 23.08. 16:30"
+export function formatCzechDateShort(date) {
+  if (!date) return '';
+  const days = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
+  const local = toPragueLocal(date);
+  const dayName = days[local.getUTCDay()];
+  const dd = String(local.getUTCDate()).padStart(2, '0');
+  const mm = String(local.getUTCMonth() + 1).padStart(2, '0');
+  const hh = String(local.getUTCHours()).padStart(2, '0');
+  const min = String(local.getUTCMinutes()).padStart(2, '0');
+  return `${dayName} ${dd}.${mm}. ${hh}:${min}`;
 }
