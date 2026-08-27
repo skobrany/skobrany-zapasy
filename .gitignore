@@ -1,2 +1,5 @@
 node_modules/
 data/matches.json
+.run-publish-local.ps1
+.env
+.env.local

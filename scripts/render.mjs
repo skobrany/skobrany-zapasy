@@ -92,7 +92,7 @@ export function renderPage(data) {
 @media (max-width:480px){ .sko-grid{ grid-template-columns:1fr; } }
 </style>
 <div class="sko-zapasy-wrap">
-  <p class="sko-zapasy-updated">Aktualizováno: ${esc(updated)} (automaticky, zdroj: fotbal.cz)</p>
+  <p class="sko-zapasy-updated">Aktualizováno: ${esc(updated)} (automaticky, zdroj: IS FAČR)</p>
   <div class="sko-grid">
     ${cards}
   </div>
