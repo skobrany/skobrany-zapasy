@@ -9,7 +9,22 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MATCHES_URL = 'https://is.fotbal.cz/public/kluby/zapasy-klubu/?sport=fotbal';
 
 async function login(page, email, password) {
-  await page.goto('https://is.fotbal.cz/?discipline=football', { waitUntil: 'domcontentloaded' });
+  let lastErr = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await page.goto('https://is.fotbal.cz/?discipline=football', {
+        waitUntil: 'domcontentloaded',
+        timeout: 45000,
+      });
+      lastErr = null;
+      break;
+    } catch (e) {
+      lastErr = e;
+      console.error(`  Pokus ${attempt}/3 o načtení přihlašovací stránky selhal: ${e.message}`);
+      await page.waitForTimeout(5000);
+    }
+  }
+  if (lastErr) throw lastErr;
   await page.locator('input[type="email"]').first().fill(email);
   await page.locator('input[type="password"]').first().fill(password);
   await page.locator('button:has-text("Přihlásit"), button[type="submit"]').first().click();
