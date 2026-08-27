@@ -1,4 +1,4 @@
-import { formatCzechDate } from './date-utils.mjs';
+import { formatCzechDate, formatCzechDateShort } from './date-utils.mjs';
 
 function esc(s) {
   if (s == null) return '';
@@ -55,6 +55,47 @@ function renderStaticRow(cat, weekStart, weekEnd) {
       </div>`;
     })
     .join('\n');
+}
+
+function lastPlayedOf(cat) {
+  const played = (cat.matches || []).filter((m) => m.score);
+  if (!played.length) return null;
+  return played.reduce((a, b) => (new Date(a.date) > new Date(b.date) ? a : b));
+}
+
+function renderLastPlayedRow(cat) {
+  if (cat.error) {
+    return `
+      <div class="sko-row">
+        <span class="sko-cat">${esc(cat.name)}</span>
+        <span class="sko-empty">data se nepodařilo načíst</span>
+      </div>`;
+  }
+  const m = lastPlayedOf(cat);
+  if (!m) {
+    return `
+      <div class="sko-row">
+        <span class="sko-cat">${esc(cat.name)}</span>
+        <span class="sko-empty">zatím nebyl odehrán žádný zápas</span>
+      </div>`;
+  }
+  return `
+    <div class="sko-row">
+      <span class="sko-cat">${esc(cat.name)}</span>
+      <span class="sko-match-line">${teamSpanStatic(m.home)} <span class="sko-score">${esc(m.score)}</span> ${teamSpanStatic(m.away)}</span>
+      <span class="sko-date">${esc(formatCzechDateShort(m.date))}</span>
+    </div>`;
+}
+
+function renderLastPlayedBlock(data) {
+  const rows = data.categories.map(renderLastPlayedRow).join('\n');
+  return `
+  <div class="sko-block">
+    <h2 class="sko-block-title">Poslední zápasy</h2>
+    <div class="sko-list">
+      ${rows}
+    </div>
+  </div>`;
 }
 
 function renderStaticFallback(data) {
@@ -186,8 +227,9 @@ export function renderPage(data) {
 .sko-zapasy-wrap { --sko-green:#1c6b32; --sko-bg:#f6f8f6; --sko-border:#dfe6df; font-family:inherit; }
 .sko-zapasy-updated { font-size:0.85em; color:#6b7a6f; margin:0 0 1.4em; }
 .sko-block { margin-bottom: 2em; }
-.sko-block-title { font-size:1.3em; color:var(--sko-green); margin:0; }
+.sko-block-title { font-size:1.3em; color:var(--sko-green); border-bottom:2px solid var(--sko-green); padding-bottom:8px; margin:0 0 4px; }
 .sko-upcoming-header { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:8px; border-bottom:2px solid var(--sko-green); padding-bottom:8px; margin:0 0 4px; }
+.sko-upcoming-header .sko-block-title { border-bottom:none; margin:0; padding-bottom:0; }
 .sko-week-nav { display:flex; align-items:center; gap:10px; }
 .sko-week-nav button { background:var(--sko-green); color:#fff; border:none; border-radius:6px; width:2em; height:2em; font-size:1.1em; line-height:1; cursor:pointer; }
 .sko-week-nav button:hover { opacity:0.85; }
@@ -209,6 +251,7 @@ export function renderPage(data) {
 </style>
 <div class="sko-zapasy-wrap">
   <p class="sko-zapasy-updated">Aktualizováno: ${esc(updated)} (automaticky, zdroj: IS FAČR)</p>
+  ${renderLastPlayedBlock(data)}
   ${renderWidget(data)}
 </div>
 <!-- /wp:html -->`;
