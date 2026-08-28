@@ -8,9 +8,17 @@ import { parseCzechDateTime } from './date-utils.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MATCHES_URL = 'https://is.fotbal.cz/public/kluby/zapasy-klubu/?sport=fotbal';
 
+// Píšeme přes stderr (console.error), protože Node ho na Windows i při přesměrování
+// do souboru flushuje synchronně řádek po řádku - stdout (console.log) se při
+// přesměrování často bufferuje a objeví se najednou až na konci/při pádu procesu.
+function log(msg) {
+  console.error(`[${new Date().toISOString()}] ${msg}`);
+}
+
 async function login(page, email, password) {
   let lastErr = null;
   for (let attempt = 1; attempt <= 3; attempt++) {
+    log(`Načítám přihlašovací stránku IS FAČR (pokus ${attempt}/3)...`);
     try {
       await page.goto('https://is.fotbal.cz/?discipline=football', {
         waitUntil: 'domcontentloaded',
@@ -20,13 +28,16 @@ async function login(page, email, password) {
       break;
     } catch (e) {
       lastErr = e;
-      console.error(`  Pokus ${attempt}/3 o načtení přihlašovací stránky selhal: ${e.message}`);
+      log(`  Pokus ${attempt}/3 o načtení přihlašovací stránky selhal: ${e.message}`);
       await page.waitForTimeout(5000);
     }
   }
   if (lastErr) throw lastErr;
+
+  log('Přihlašovací stránka načtena, vyplňuji formulář...');
   await page.locator('input[type="email"]').first().fill(email);
   await page.locator('input[type="password"]').first().fill(password);
+  log('Klikám na tlačítko Přihlásit...');
   await page.locator('button:has-text("Přihlásit"), button[type="submit"]').first().click();
   await page.waitForTimeout(4000);
 
@@ -34,6 +45,7 @@ async function login(page, email, password) {
   if (stillHasPasswordField > 0) {
     throw new Error('Přihlášení do IS FAČR se nezdařilo (formulář pro heslo je stále zobrazen).');
   }
+  log('Přihlášení potvrzeno (formulář pro heslo zmizel).');
 }
 
 function parseRow(cells) {
@@ -44,6 +56,7 @@ function parseRow(cells) {
 async function scrapeAllMatches(page) {
   let lastErr = null;
   for (let attempt = 1; attempt <= 3; attempt++) {
+    log(`Načítám stránku s rozpisem zápasů (pokus ${attempt}/3)...`);
     try {
       await page.goto(MATCHES_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
       await page.waitForSelector('table[id*="gridData"]', { timeout: 20000 });
@@ -51,11 +64,12 @@ async function scrapeAllMatches(page) {
       break;
     } catch (e) {
       lastErr = e;
-      console.error(`  Pokus ${attempt}/3 o načtení rozpisu zápasů selhal: ${e.message}`);
+      log(`  Pokus ${attempt}/3 o načtení rozpisu zápasů selhal: ${e.message}`);
       await page.waitForTimeout(5000);
     }
   }
   if (lastErr) throw lastErr;
+  log('Tabulka se zápasy načtena, prochazím stránkování...');
 
   const allRows = [];
   const seenPages = new Set();
@@ -96,6 +110,7 @@ async function scrapeAllMatches(page) {
     if (pagerNumbers.length) {
       maxPage = Math.max(maxPage, ...pagerNumbers);
     }
+    log(`  Stránka ${currentPage}/${maxPage}: ${rows.length} řádků (celkem zatím ${allRows.length}).`);
 
     const nextPage = currentPage + 1;
     if (nextPage > maxPage || seenPages.has(nextPage)) break;
@@ -130,16 +145,17 @@ async function main() {
     process.exit(1);
   }
 
+  log('Spouštím headless Chromium...');
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ locale: 'cs-CZ', viewport: { width: 1366, height: 900 } });
   const page = await context.newPage();
 
-  console.log('Přihlašuji se do IS FAČR...');
+  log('Přihlašuji se do IS FAČR...');
   await login(page, email, password);
-  console.log('Přihlášení OK, stahuji rozpis zápasů...');
+  log('Přihlášení OK, stahuji rozpis zápasů...');
 
   const rawMatches = await scrapeAllMatches(page);
-  console.log(`Staženo ${rawMatches.length} řádků z rozpisu.`);
+  log(`Staženo ${rawMatches.length} řádků z rozpisu.`);
 
   await browser.close();
 
@@ -166,7 +182,7 @@ async function main() {
     });
 
     const played = teamMatches.filter((m) => m.score && !m.score.includes('--')).length;
-    console.log(`  ${team.name}: ${teamMatches.length} zápasů celkem, odehráno ${played}`);
+    log(`  ${team.name}: ${teamMatches.length} zápasů celkem, odehráno ${played}`);
   }
 
   function home_or_away_is_team(r, teamName) {
@@ -192,7 +208,7 @@ async function main() {
     'utf-8'
   );
 
-  console.log('Hotovo. Uloženo do data/matches.json');
+  log('Hotovo. Uloženo do data/matches.json');
 }
 
 main().catch((err) => {
