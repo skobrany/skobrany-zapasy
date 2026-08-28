@@ -76,9 +76,8 @@ async function scrapeAllMatches(page) {
   let currentPage = 1;
   let maxPage = 1;
 
-  for (let guard = 0; guard < 25; guard++) {
-    await page.waitForTimeout(600);
-    const { rows, pagerNumbers } = await page.evaluate(() => {
+  async function readTable() {
+    return page.evaluate(() => {
       const table = document.querySelector('table[id*="gridData"]');
       const trs = Array.from(table.querySelectorAll('tr'));
       const rows = [];
@@ -104,6 +103,28 @@ async function scrapeAllMatches(page) {
         .map(Number);
       return { rows, pagerNumbers };
     });
+  }
+
+  // Čtení tabulky obalíme retry smyčkou - pokud stránka zrovna dokončuje postback
+  // (přechod na další stránku), page.evaluate() může narazit na "Execution context
+  // was destroyed" (kontext zanikl uprostřed čtení). Po krátké pauze to prostě zkusíme znovu.
+  async function readTableWithRetry() {
+    let lastErr = null;
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      try {
+        await page.waitForSelector('table[id*="gridData"]', { timeout: 15000 });
+        return await readTable();
+      } catch (e) {
+        lastErr = e;
+        log(`  Čtení tabulky selhalo (pokus ${attempt}/4): ${e.message}`);
+        await page.waitForTimeout(1500);
+      }
+    }
+    throw lastErr;
+  }
+
+  for (let guard = 0; guard < 25; guard++) {
+    const { rows, pagerNumbers } = await readTableWithRetry();
 
     allRows.push(...rows);
     seenPages.add(currentPage);
@@ -121,7 +142,8 @@ async function scrapeAllMatches(page) {
       .locator(`a[href*="'Page$${nextPage}');"]`)
       .first()
       .click();
-    await page.waitForTimeout(1500);
+    await page.waitForLoadState('domcontentloaded').catch(() => {});
+    await page.waitForTimeout(1000);
     currentPage = nextPage;
   }
 
