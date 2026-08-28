@@ -42,8 +42,20 @@ function parseRow(cells) {
 }
 
 async function scrapeAllMatches(page) {
-  await page.goto(MATCHES_URL, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('table[id*="gridData"]', { timeout: 20000 });
+  let lastErr = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await page.goto(MATCHES_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
+      await page.waitForSelector('table[id*="gridData"]', { timeout: 20000 });
+      lastErr = null;
+      break;
+    } catch (e) {
+      lastErr = e;
+      console.error(`  Pokus ${attempt}/3 o načtení rozpisu zápasů selhal: ${e.message}`);
+      await page.waitForTimeout(5000);
+    }
+  }
+  if (lastErr) throw lastErr;
 
   const allRows = [];
   const seenPages = new Set();
